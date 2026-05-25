@@ -1,0 +1,24 @@
+# render.yaml
+# Render.com deployment configuration for ReviveBot
+# Deploy as a Background Worker (not a Web Service) — no HTTP port needed.
+
+services:
+  - type: worker
+    name: discord-revival-bot
+    runtime: node
+    plan: free          # Upgrade to starter ($7/mo) for persistent disk
+    buildCommand: npm install
+    startCommand: node bot.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DISCORD_TOKEN
+        sync: false      # Set manually in Render dashboard (secret)
+      - key: DISCORD_CLIENT_ID
+        sync: false      # Set manually in Render dashboard
+      - key: GROQ_API_KEY
+        sync: false      # Set manually in Render dashboard (optional)
+    disk:
+      name: revival-data
+      mountPath: /data
+      sizeGB: 1          # Required for SQLite persistence across deploys
