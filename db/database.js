@@ -1,107 +1,30 @@
 // db/database.js
-// SQLite persistence using sql.js (pure JavaScript — no native compilation needed).
-// Data is saved to disk as a binary file and loaded on startup.
+// Pure in-memory store — no SQLite, no disk I/O.
+// Data resets on restart, which is fine: settings are re-entered via slash commands
+// and last_message_at just seeds from "now" when the tracker first picks up the channel.
 
-import { createRequire } from "module";
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
-import { join, dirname } from "path";
-import { fileURLToPath } from "url";
-
-const require = createRequire(import.meta.url);
-const __dirname = dirname(fileURLToPath(import.meta.url));
-
-const DATA_DIR = join(__dirname, "..", "data");
-const DB_PATH = join(DATA_DIR, "revival.db");
-
-/** @type {import("sql.js").Database} */
-let db;
-
-/** @type {NodeJS.Timeout|null} */
-let persistTimer = null;
-const PERSIST_DEBOUNCE_MS = 30 * 1000; // batch writes — flush at most every 30s
-let dirty = false;
+// ─── State ────────────────────────────────────────────────────────────────────
 
 /**
- * Write the in-memory database to disk immediately.
+ * guild_id → { channel_id, role_id, timer_minutes, minigames }
+ * @type {Map<string, object>}
  */
-function persistNow() {
-  if (!db) return;
-  const data = db.export();
-  writeFileSync(DB_PATH, Buffer.from(data));
-  dirty = false;
-  if (persistTimer) {
-    clearTimeout(persistTimer);
-    persistTimer = null;
-  }
-}
+const guildSettings = new Map();
 
 /**
- * Schedule a debounced disk write. Multiple calls within the debounce
- * window collapse into a single write — avoids rewriting the entire
- * SQLite file on every Discord message in busy channels.
+ * channel_id → { channel_id, guild_id, last_message_at, last_revival_at, revival_cooldown_minutes }
+ * @type {Map<string, object>}
  */
-function persist() {
-  dirty = true;
-  if (persistTimer) return; // already scheduled
-  persistTimer = setTimeout(() => {
-    persistTimer = null;
-    if (dirty) persistNow();
-  }, PERSIST_DEBOUNCE_MS);
-}
+const channelActivity = new Map();
 
-/**
- * Flush any pending write immediately (call on shutdown).
- */
-export function flushDatabase() {
-  if (dirty) persistNow();
-}
+// ─── No-op lifecycle (kept so bot.js imports don't break) ────────────────────
 
-/**
- * Initialize the sql.js database, loading from disk if it exists.
- */
 export async function initDatabase() {
-  mkdirSync(DATA_DIR, { recursive: true });
-
-  const initSqlJs = require("sql.js");
-  const SQL = await initSqlJs();
-
-  if (existsSync(DB_PATH)) {
-    const fileBuffer = readFileSync(DB_PATH);
-    db = new SQL.Database(fileBuffer);
-    console.log("[DB] Loaded existing database from", DB_PATH);
-  } else {
-    db = new SQL.Database();
-    console.log("[DB] Created new database at", DB_PATH);
-  }
-
-  db.run(`
-    CREATE TABLE IF NOT EXISTS guild_settings (
-      guild_id      TEXT PRIMARY KEY,
-      channel_id    TEXT,
-      role_id       TEXT,
-      timer_minutes INTEGER NOT NULL DEFAULT 30,
-      minigames     INTEGER NOT NULL DEFAULT 1
-    );
-
-    CREATE TABLE IF NOT EXISTS channel_activity (
-      channel_id              TEXT PRIMARY KEY,
-      guild_id                TEXT NOT NULL,
-      last_message_at         INTEGER NOT NULL,
-      last_revival_at         INTEGER,
-      revival_cooldown_minutes INTEGER NOT NULL DEFAULT 60
-    );
-  `);
-
-  persistNow();
-  console.log("[DB] Schema ready.");
+  console.log("[DB] Using in-memory store (no disk persistence).");
 }
 
-/**
- * Get the db instance (throws if not initialized).
- */
-function getDb() {
-  if (!db) throw new Error("Database not initialized. Call initDatabase() first.");
-  return db;
+export function flushDatabase() {
+  // nothing to flush
 }
 
 // ─── Guild Settings ───────────────────────────────────────────────────────────
@@ -111,13 +34,7 @@ function getDb() {
  * @returns {object|null}
  */
 export function getGuildSettings(guildId) {
-  const res = getDb().exec(
-    "SELECT * FROM guild_settings WHERE guild_id = ?",
-    [guildId]
-  );
-  if (!res.length || !res[0].values.length) return null;
-  const [cols, vals] = [res[0].columns, res[0].values[0]];
-  return Object.fromEntries(cols.map((c, i) => [c, vals[i]]));
+  return guildSettings.get(guildId) ?? null;
 }
 
 /**
@@ -125,87 +42,68 @@ export function getGuildSettings(guildId) {
  * @param {object} fields
  */
 export function upsertGuildSettings(guildId, fields) {
-  const existing = getGuildSettings(guildId);
-  const d = getDb();
-
-  if (!existing) {
-    d.run(
-      `INSERT INTO guild_settings (guild_id, channel_id, role_id, timer_minutes, minigames)
-       VALUES (?, ?, ?, ?, ?)`,
-      [
-        guildId,
-        fields.channel_id ?? null,
-        fields.role_id ?? null,
-        fields.timer_minutes ?? 30,
-        fields.minigames !== undefined ? (fields.minigames ? 1 : 0) : 1,
-      ]
-    );
-  } else {
-    for (const [key, val] of Object.entries(fields)) {
-      d.run(
-        `UPDATE guild_settings SET ${key} = ? WHERE guild_id = ?`,
-        [key === "minigames" ? (val ? 1 : 0) : val, guildId]
-      );
-    }
-  }
-  persist();
+  const existing = guildSettings.get(guildId) ?? {
+    guild_id: guildId,
+    channel_id: null,
+    role_id: null,
+    timer_minutes: 30,
+    minigames: 1,
+  };
+  guildSettings.set(guildId, { ...existing, ...fields });
 }
 
 // ─── Channel Activity ─────────────────────────────────────────────────────────
 
 /**
- * Record a new message (updates last_message_at to now).
+ * Record a new message in a channel (upsert last_message_at).
  * @param {string} channelId
  * @param {string} guildId
  */
 export function recordMessage(channelId, guildId) {
-  getDb().run(
-    `INSERT INTO channel_activity (channel_id, guild_id, last_message_at)
-     VALUES (?, ?, ?)
-     ON CONFLICT(channel_id) DO UPDATE SET
-       last_message_at = excluded.last_message_at,
-       guild_id = excluded.guild_id`,
-    [channelId, guildId, Date.now()]
-  );
-  persist();
+  const existing = channelActivity.get(channelId);
+  channelActivity.set(channelId, {
+    channel_id: channelId,
+    guild_id: guildId,
+    last_message_at: Date.now(),
+    last_revival_at: existing?.last_revival_at ?? null,
+    revival_cooldown_minutes: existing?.revival_cooldown_minutes ?? 60,
+  });
 }
 
 /**
- * Record that a revival was triggered.
+ * Record that a revival was just triggered for a channel.
  * @param {string} channelId
  */
 export function recordRevival(channelId) {
-  getDb().run(
-    `UPDATE channel_activity SET last_revival_at = ? WHERE channel_id = ?`,
-    [Date.now(), channelId]
-  );
-  persist();
+  const existing = channelActivity.get(channelId);
+  if (!existing) return;
+  channelActivity.set(channelId, { ...existing, last_revival_at: Date.now() });
 }
 
 /**
- * Get all monitored channels (joined with guild settings).
+ * Get all channels that are actively monitored (i.e. have both activity data
+ * and a matching guild setting pointing at them).
  * @returns {Array<object>}
  */
 export function getMonitoredChannels() {
-  const res = getDb().exec(`
-    SELECT
-      ca.channel_id,
-      ca.guild_id,
-      ca.last_message_at,
-      ca.last_revival_at,
-      ca.revival_cooldown_minutes,
-      gs.timer_minutes,
-      gs.minigames,
-      gs.role_id
-    FROM channel_activity ca
-    JOIN guild_settings gs
-      ON ca.guild_id = gs.guild_id
-      AND ca.channel_id = gs.channel_id
-  `);
+  const results = [];
 
-  if (!res.length) return [];
-  const cols = res[0].columns;
-  return res[0].values.map((row) =>
-    Object.fromEntries(cols.map((c, i) => [c, row[i]]))
-  );
+  for (const [channelId, activity] of channelActivity) {
+    const settings = guildSettings.get(activity.guild_id);
+    // Only include channels that are the configured channel for their guild
+    if (!settings || settings.channel_id !== channelId) continue;
+
+    results.push({
+      channel_id: channelId,
+      guild_id: activity.guild_id,
+      last_message_at: activity.last_message_at,
+      last_revival_at: activity.last_revival_at,
+      revival_cooldown_minutes: activity.revival_cooldown_minutes,
+      timer_minutes: settings.timer_minutes,
+      minigames: settings.minigames,
+      role_id: settings.role_id,
+    });
+  }
+
+  return results;
 }

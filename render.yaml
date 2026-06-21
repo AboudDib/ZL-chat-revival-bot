@@ -22,7 +22,3 @@ services:
         sync: false      # Optional — set for instant guild-only command registration
       - key: GEMINI_API_KEY
         sync: false      # Set manually in Render dashboard
-    disk:
-      name: revival-data
-      mountPath: /data
-      sizeGB: 1          # Required for SQLite persistence across deploys
