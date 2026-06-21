@@ -265,7 +265,7 @@ async function handleReviveNow(interaction, guildId, client) {
   await interaction.deferReply({ ephemeral: true });
 
   try {
-    const { generateRevivalMessage } = await import("../services/groqService.js");
+    const { generateRevivalMessage } = await import("../services/geminiService.js");
     const { recordRevival } = await import("../db/database.js");
 
     const channel = await client.channels.fetch(settings.channel_id);

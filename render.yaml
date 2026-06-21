@@ -21,9 +21,7 @@ services:
       - key: DISCORD_GUILD_ID
         sync: false      # Optional — set for instant guild-only command registration
       - key: GEMINI_API_KEY
-        sync: false      # Set manually in Render dashboard — primary AI provider
-      - key: GROQ_API_KEY
-        sync: false      # Set manually in Render dashboard (optional fallback)
+        sync: false      # Set manually in Render dashboard
     disk:
       name: revival-data
       mountPath: /data

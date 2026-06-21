@@ -6,7 +6,7 @@ import "dotenv/config";
 import { Client, GatewayIntentBits, Events } from "discord.js";
 
 import { initDatabase, recordMessage, flushDatabase } from "./db/database.js";
-import { initGroq } from "./services/groqService.js";
+import { initGemini } from "./services/geminiService.js";
 import { startInactivityTracker, stopInactivityTracker } from "./services/inactivityTracker.js";
 import { handleCommand } from "./commands/reviveCommands.js";
 
@@ -123,7 +123,7 @@ async function main() {
   }
 
   await initDatabase();
-  initGroq();
+  initGemini();
   await client.login(process.env.DISCORD_TOKEN);
 }
 

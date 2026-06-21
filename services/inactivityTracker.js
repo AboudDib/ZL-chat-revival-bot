@@ -2,7 +2,7 @@
 // Background task that periodically checks for inactive channels and triggers revivals.
 
 import { getMonitoredChannels, recordRevival } from "../db/database.js";
-import { generateRevivalMessage } from "./groqService.js";
+import { generateRevivalMessage } from "./geminiService.js";
 
 let trackerInterval = null;
 const CHECK_INTERVAL_MS = 2 * 60 * 1000; // every 2 minutes
