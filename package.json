@@ -10,7 +10,8 @@
   "scripts": {
     "start": "node bot.js",
     "dev": "node --watch bot.js",
-    "test:ai": "node scripts/testAI.js"
+    "test:ai": "node scripts/testAI.js",
+    "clear:global-commands": "node scripts/clearGlobalCommands.js"
   },
   "dependencies": {
     "discord.js": "^14.16.3",
