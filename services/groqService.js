@@ -91,12 +91,26 @@ Avoid repeating these recent questions: ${recentList()}`;
       config: {
         tools: [{ googleSearch: {} }],
         temperature: 1.2,
-        maxOutputTokens: 100,
+        // Generous budget: gemini-2.5-flash can spend tokens on internal
+        // "thinking" before producing visible output. Too low a cap here
+        // can exhaust the budget on reasoning alone, leaving zero visible
+        // text even though the call technically succeeded.
+        maxOutputTokens: 512,
       },
     });
 
     const text = response?.text?.trim();
-    if (!text) throw new Error("Empty response from Gemini");
+    if (!text) {
+      // Surface *why* it was empty instead of a bare "empty response" —
+      // finishReason (e.g. MAX_TOKENS, SAFETY, RECITATION) tells us the
+      // real cause.
+      const candidate = response?.candidates?.[0];
+      console.error(
+        "[Gemini] Empty response. finishReason:", candidate?.finishReason,
+        "| candidate:", JSON.stringify(candidate)?.slice(0, 500)
+      );
+      throw new Error(`Empty response from Gemini (finishReason: ${candidate?.finishReason ?? "unknown"})`);
+    }
 
     // Log grounding info so it's easy to confirm search actually ran
     const grounding = response?.candidates?.[0]?.groundingMetadata;
