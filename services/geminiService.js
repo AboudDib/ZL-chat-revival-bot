@@ -85,11 +85,14 @@ Avoid repeating these recent questions: ${recentList()}`;
       config: {
         tools: [{ googleSearch: {} }],
         temperature: 1.2,
-        // Generous budget: gemini-2.5-flash can spend tokens on internal
-        // "thinking" before producing visible output. Too low a cap here
-        // can exhaust the budget on reasoning alone, leaving zero visible
-        // text even though the call technically succeeded.
-        maxOutputTokens: 512,
+        // Thinking tokens count against maxOutputTokens on 2.5 Flash, and
+        // for a short one-line question there's no need for multi-step
+        // reasoning anyway — disable thinking entirely so all the budget
+        // goes to visible text. Without this, MAX_TOKENS was being hit on
+        // thinking alone, leaving an empty response no matter how high
+        // maxOutputTokens was raised.
+        thinkingConfig: { thinkingBudget: 0 },
+        maxOutputTokens: 150,
       },
     });
 
