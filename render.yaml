@@ -18,6 +18,8 @@ services:
         sync: false      # Set manually in Render dashboard (secret)
       - key: DISCORD_CLIENT_ID
         sync: false      # Set manually in Render dashboard
+      - key: DISCORD_GUILD_ID
+        sync: false      # Optional — set for instant guild-only command registration
       - key: GEMINI_API_KEY
         sync: false      # Set manually in Render dashboard — primary AI provider
       - key: GROQ_API_KEY

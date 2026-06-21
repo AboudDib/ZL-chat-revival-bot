@@ -12,6 +12,7 @@ import "dotenv/config";
 
 const token = process.env.DISCORD_TOKEN;
 const clientId = process.env.DISCORD_CLIENT_ID;
+const guildId = process.env.DISCORD_GUILD_ID; // optional — set for instant, guild-only registration
 
 if (!token || !clientId) {
   console.warn(
@@ -25,12 +26,21 @@ if (!token || !clientId) {
 
 const rest = new REST({ version: "10" }).setToken(token);
 
-console.log(`[RegisterCommands] Registering ${commands.length} slash command(s) globally...`);
+const route = guildId
+  ? Routes.applicationGuildCommands(clientId, guildId)
+  : Routes.applicationCommands(clientId);
+
+console.log(
+  `[RegisterCommands] Registering ${commands.length} slash command(s) ` +
+  (guildId ? `to guild ${guildId} (instant)...` : "globally...")
+);
 
 try {
-  await rest.put(Routes.applicationCommands(clientId), { body: commands });
+  await rest.put(route, { body: commands });
   console.log("[RegisterCommands] ✅ Registered successfully.");
-  console.log("[RegisterCommands] Note: global commands can take up to 1 hour to appear in Discord.");
+  if (!guildId) {
+    console.log("[RegisterCommands] Note: global commands can take up to 1 hour to appear in Discord.");
+  }
 } catch (err) {
   console.error("[RegisterCommands] Failed to register commands:", err.message);
   // Exit 0, not 1: don't fail the whole build/deploy over command
