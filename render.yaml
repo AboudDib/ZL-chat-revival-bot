@@ -1,14 +1,16 @@
 # render.yaml
 # Render.com deployment configuration for ReviveBot
-# Deploy as a Background Worker (not a Web Service) — no HTTP port needed.
+# Deployed as a Web Service — free tier requires an HTTP port + self-ping
+# (see bot.js) to avoid the 15-minute idle spin-down.
 
 services:
-  - type: worker
+  - type: web
     name: discord-revival-bot
     runtime: node
     plan: free          # Upgrade to starter ($7/mo) for persistent disk
     buildCommand: npm install
     startCommand: node bot.js
+    healthCheckPath: /healthz
     envVars:
       - key: NODE_ENV
         value: production

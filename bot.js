@@ -5,7 +5,7 @@
 import "dotenv/config";
 import { Client, GatewayIntentBits, Events } from "discord.js";
 
-import { initDatabase, recordMessage } from "./db/database.js";
+import { initDatabase, recordMessage, flushDatabase } from "./db/database.js";
 import { initGroq } from "./services/groqService.js";
 import { startInactivityTracker, stopInactivityTracker } from "./services/inactivityTracker.js";
 import { handleCommand } from "./commands/reviveCommands.js";
@@ -74,6 +74,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 function shutdown(signal) {
   console.log(`[Bot] ${signal} received — shutting down...`);
   stopInactivityTracker();
+  flushDatabase();
   client.destroy();
   process.exit(0);
 }
@@ -92,22 +93,31 @@ async function main() {
   // HTTP server to satisfy Render free tier port requirement
   const { createServer } = await import("http");
   const port = process.env.PORT || 3000;
-  createServer((_, res) => res.end("Bot is running")).listen(port, () => {
+  createServer((req, res) => {
+    if (req.url === "/healthz") {
+      res.writeHead(200, { "Content-Type": "text/plain" });
+      res.end("ok");
+      return;
+    }
+    res.end("Bot is running");
+  }).listen(port, () => {
     console.log(`[Bot] HTTP server listening on port ${port}`);
   });
 
-  // Self-ping every 5 minutes to prevent Render free tier sleep
+  // Self-ping every 5 minutes to prevent Render free tier (web service) sleep.
+  // Hits /healthz specifically — cheapest possible handler, no logic, no DB.
   const RENDER_URL = process.env.RENDER_EXTERNAL_URL;
   if (RENDER_URL) {
     const { default: https } = await import("https");
+    const healthUrl = `${RENDER_URL.replace(/\/$/, "")}/healthz`;
     setInterval(() => {
-      https.get(RENDER_URL, (res) => {
+      https.get(healthUrl, (res) => {
         console.log(`[KeepAlive] Pinged self — status ${res.statusCode}`);
       }).on("error", (err) => {
         console.warn("[KeepAlive] Self-ping failed:", err.message);
       });
     }, 5 * 60 * 1000);
-    console.log(`[KeepAlive] Self-ping enabled for ${RENDER_URL}`);
+    console.log(`[KeepAlive] Self-ping enabled for ${healthUrl}`);
   } else {
     console.warn("[KeepAlive] RENDER_EXTERNAL_URL not set — self-ping disabled.");
   }

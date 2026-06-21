@@ -16,12 +16,44 @@ const DB_PATH = join(DATA_DIR, "revival.db");
 /** @type {import("sql.js").Database} */
 let db;
 
+/** @type {NodeJS.Timeout|null} */
+let persistTimer = null;
+const PERSIST_DEBOUNCE_MS = 30 * 1000; // batch writes — flush at most every 30s
+let dirty = false;
+
 /**
- * Save the in-memory database to disk.
+ * Write the in-memory database to disk immediately.
  */
-function persist() {
+function persistNow() {
+  if (!db) return;
   const data = db.export();
   writeFileSync(DB_PATH, Buffer.from(data));
+  dirty = false;
+  if (persistTimer) {
+    clearTimeout(persistTimer);
+    persistTimer = null;
+  }
+}
+
+/**
+ * Schedule a debounced disk write. Multiple calls within the debounce
+ * window collapse into a single write — avoids rewriting the entire
+ * SQLite file on every Discord message in busy channels.
+ */
+function persist() {
+  dirty = true;
+  if (persistTimer) return; // already scheduled
+  persistTimer = setTimeout(() => {
+    persistTimer = null;
+    if (dirty) persistNow();
+  }, PERSIST_DEBOUNCE_MS);
+}
+
+/**
+ * Flush any pending write immediately (call on shutdown).
+ */
+export function flushDatabase() {
+  if (dirty) persistNow();
 }
 
 /**
@@ -60,7 +92,7 @@ export async function initDatabase() {
     );
   `);
 
-  persist();
+  persistNow();
   console.log("[DB] Schema ready.");
 }
 
