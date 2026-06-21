@@ -18,8 +18,10 @@ services:
         sync: false      # Set manually in Render dashboard (secret)
       - key: DISCORD_CLIENT_ID
         sync: false      # Set manually in Render dashboard
+      - key: GEMINI_API_KEY
+        sync: false      # Set manually in Render dashboard — primary AI provider
       - key: GROQ_API_KEY
-        sync: false      # Set manually in Render dashboard (optional)
+        sync: false      # Set manually in Render dashboard (optional fallback)
     disk:
       name: revival-data
       mountPath: /data
