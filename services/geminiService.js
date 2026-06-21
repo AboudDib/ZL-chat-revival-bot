@@ -58,12 +58,21 @@ export async function generateRevivalMessage() {
 
   const isGaming = Math.random() < 0.2;
   const focus = isGaming
-    ? "gaming (a current game, esports scene, or gaming news/drama)"
-    : "something genuinely happening right now — could be sports (e.g. an ongoing tournament or big match), world news, pop culture, or something currently trending online";
+    ? "gaming — a current game, esports scene, recent patch/release, or gaming community drama people are actively arguing about"
+    : "sports rivalries, a live tournament or big match, celebrity/internet drama, pop culture takes, or something people are actively arguing about online right now";
 
-  const prompt = `You are a person in a Discord server who wants to start a heated debate.
+  const prompt = `You are a person in a Discord server who wants to start a heated, fun debate.
 Use Google Search to check what's actually happening right now, then write ONE controversial, casual question about ${focus}.
-The question must reference something real and current — not a generic timeless topic.
+
+The question must reference something real and current that people would actually want to argue about — a rivalry, a take, a "who's better" debate, a recent drama or controversy in sports/gaming/entertainment.
+
+Hard NO — do not use:
+- Politics, government policy, military/defense news, diplomacy, or geopolitics
+- Dry factual/procedural news (deals, donations, official statements, legal proceedings)
+- Tragedies, disasters, deaths, or anything somber
+- Anything that isn't fun to argue about over Discord
+
+Think: the kind of debate people have in a group chat, not the news desk.
 ${BASE_RULES}
 
 Avoid repeating these recent questions: ${recentList()}`;
